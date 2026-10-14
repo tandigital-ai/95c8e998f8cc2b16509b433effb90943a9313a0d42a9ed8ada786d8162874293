@@ -1,0 +1,65 @@
+/* tokens.css — Biến thiết kế (giữ bảng màu dark/light của bản GAS/V3.2) */
+:root,
+[data-theme="dark"] {
+  --bg-primary: #09090d;
+  --bg-secondary: #111118;
+  --bg-tertiary: #181825;
+  --bg-card: #14141e;
+  --bg-input: #0c0c14;
+  --border: #232334;
+  --border-active: #383855;
+  --text-primary: #e4e4f0;
+  --text-secondary: #a8a8c0;
+  --text-muted: #8a8aa3; /* tăng tương phản so với bản cũ (#686880) để đạt WCAG AA trên nền tối */
+  --accent-1: #4d6bfe;
+  --accent-2: #7c3aed;
+  --accent-3: #06b6d4;
+  --accent-green: #10b981;
+  --accent-orange: #f59e0b;
+  --accent-red: #ef4444;
+  --accent-pink: #ec4899;
+  --on-accent: #ffffff;
+  --overlay: rgba(0, 0, 0, 0.7);
+  --code-bg: #0b0b12;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --diagram-bg: #1e1e2e;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f4f4f8;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f0f5;
+  --bg-card: #fafafe;
+  --bg-input: #ffffff;
+  --border: #dddde8;
+  --border-active: #b8b8cc;
+  --text-primary: #1a1a2e;
+  --text-secondary: #45455e;
+  --text-muted: #62627a;
+  --accent-1: #3552e8;
+  --accent-3: #0e7490;
+  --accent-green: #047857;
+  --accent-orange: #b45309;
+  --accent-red: #b91c1c;
+  --overlay: rgba(20, 20, 40, 0.45);
+  --code-bg: #f6f6fb;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --diagram-bg: #ffffff;
+  color-scheme: light;
+}
+
+:root {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
+  --font-sans: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --focus-ring: 0 0 0 3px rgba(77, 107, 254, 0.45);
+}

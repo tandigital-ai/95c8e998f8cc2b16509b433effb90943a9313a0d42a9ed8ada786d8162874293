@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#09090d">
+  <meta name="description" content="AI System Architect — bản web cá nhân: sinh kiến trúc, contract, code, review từ ý tưởng.">
+  <title>AI System Architect — bản web cá nhân</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <script type="module" src="/js/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Bỏ qua tới nội dung chính</a>
+  <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+  <div class="app">
+    <header class="app-header" id="app-header">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">🧠</div>
+        <div>
+          <h1 class="brand-title">AI System Architect</h1>
+          <span class="brand-badge">Web cá nhân · <span id="app-version">v0.1</span></span>
+        </div>
+      </div>
+      <nav class="header-actions" aria-label="Chức năng chính">
+        <button class="btn btn-out btn-sm" id="btn-projects" type="button">📜 Dự án</button>
+        <button class="btn btn-out btn-sm" id="btn-vault" type="button">🔐 Vault</button>
+        <button class="btn btn-out btn-sm" id="btn-analyze" type="button">🔎 Phân tích ảnh/code</button>
+        <button class="btn btn-out btn-sm" id="btn-workflow" type="button">🔄 Workflow</button>
+        <button class="btn btn-out btn-sm" id="btn-export" type="button">📦 Export</button>
+        <button class="btn btn-out btn-sm" id="btn-contract-dl" type="button">📥 Contract</button>
+        <button class="btn btn-out btn-sm" id="btn-cost" type="button">💰 Chi phí</button>
+        <button class="btn btn-out btn-sm" id="btn-logs" type="button">🧾 Logs</button>
+        <button class="btn btn-out btn-sm" id="btn-settings" type="button">⚙️ Cài đặt</button>
+        <button class="btn btn-out btn-sm" id="btn-limits" type="button">⚠️ Giới hạn</button>
+        <button class="btn btn-out btn-sm" id="btn-theme" type="button" aria-pressed="false">🌙 Dark</button>
+      </nav>
+    </header>
+
+    <aside class="limits-strip" id="limits-strip" aria-label="Giới hạn quan trọng">
+      <ul>
+        <li>Không chạy nền: đóng tab = dừng (chỉ có "Tiếp tục" thủ công từ checkpoint)</li>
+        <li>Ngân sách chỉ là CẢNH BÁO, không chặn cứng</li>
+        <li>Không build/chạy thử mã sinh ra — chỉ kiểm tra cú pháp/nhất quán trong trình duyệt</li>
+      </ul>
+      <button class="btn btn-xs btn-out" id="btn-limits-more" type="button">Chi tiết</button>
+    </aside>
+
+    <div class="notice-area" id="notice-area" aria-live="polite"></div>
+
+    <section class="stats" id="stats-bar" aria-label="Thống kê"></section>
+
+    <div class="main-grid">
+      <aside class="panel" id="providers-panel" aria-labelledby="providers-title">
+        <div class="panel-hdr">
+          <h2 class="panel-title" id="providers-title">🔌 Providers</h2>
+          <div class="row">
+            <button class="btn btn-xs btn-out" id="btn-ping-all" type="button">📡 Test tất cả</button>
+            <button class="btn btn-xs btn-out" id="btn-models-all" type="button">🔄 Tải models</button>
+          </div>
+        </div>
+        <div class="panel-body scroll" id="providers-list"></div>
+      </aside>
+
+      <main class="right-col" id="main-content" tabindex="-1">
+        <section class="cfg-bar" id="config-bar" aria-label="Cấu hình dự án">
+          <div class="field">
+            <label for="project-name">Dự án</label>
+            <input class="inp" id="project-name" type="text" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="platform-select">Nền tảng</label>
+            <select class="sel" id="platform-select"></select>
+          </div>
+          <div class="field">
+            <label for="lang-select">Ngôn ngữ đầu ra</label>
+            <select class="sel" id="lang-select">
+              <option value="vi">🇻🇳 Tiếng Việt</option>
+              <option value="en">🇬🇧 English</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="template-select">Mẫu ý tưởng</label>
+            <select class="sel" id="template-select"></select>
+          </div>
+        </section>
+
+        <section class="idea-box" id="idea-box" aria-labelledby="idea-label">
+          <label class="field-label" id="idea-label" for="idea-input">💡 Mô tả ý tưởng dự án</label>
+          <textarea class="ta idea-ta mt-8" id="idea-input" placeholder="Mô tả ý tưởng chi tiết… Ví dụ: Hệ thống CRM với AI phân tích khách hàng, tự phân loại lead, chatbot chăm sóc 24/7…"></textarea>
+          <div class="model-row mt-8" id="model-row"></div>
+          <div class="row mt-8">
+            <button class="btn btn-pri" id="btn-generate" type="button" title="Ctrl+Enter">⚡ Tạo kiến trúc</button>
+            <button class="btn btn-out btn-sm" id="btn-diagram" type="button">📊 Diagram</button>
+            <button class="btn btn-danger btn-sm" id="btn-cancel" type="button" disabled>⏹ Hủy</button>
+            <label class="check"><input type="checkbox" id="stream-toggle"> Streaming</label>
+            <button class="btn btn-out btn-sm" id="btn-save-version" type="button">💾 Lưu version</button>
+            <button class="btn btn-out btn-sm" id="btn-reset" type="button">🔄 Reset</button>
+          </div>
+          <details class="mt-12" id="refs-box">
+            <summary class="small">🖼️ Ảnh giao diện mẫu & 📎 tệp tham chiếu (<span id="refs-count">0</span>)</summary>
+            <div class="col mt-8" id="refs-body"></div>
+          </details>
+        </section>
+
+        <section id="pipeline-panel" aria-label="Pipeline"></section>
+
+        <section class="result" id="workspace" aria-label="Kết quả"></section>
+      </main>
+    </div>
+
+    <footer class="small muted" id="app-footer">
+      AI System Architect — bản web cá nhân. Dữ liệu nằm trong trình duyệt của bạn (IndexedDB). Hãy sao lưu định kỳ (Cài đặt → Sao lưu).
+    </footer>
+  </div>
+</body>
+</html>
