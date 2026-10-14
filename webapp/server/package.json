@@ -1,9 +1,0 @@
-{
-  "name": "ai-architect-proxy",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Proxy LLM nhỏ gọn cho AI System Architect (dùng cá nhân). Không dependency ngoài.",
-  "engines": { "node": ">=20.12" },
-  "scripts": { "start": "node index.js" }
-}
