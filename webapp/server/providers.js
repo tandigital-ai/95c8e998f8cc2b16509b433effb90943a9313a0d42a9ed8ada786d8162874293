@@ -114,6 +114,18 @@ export const PROVIDERS = Object.freeze({
     docsUrl: 'https://docs.api.nvidia.com/',
     notes: 'Danh mục model NIM thay đổi thường xuyên — hãy bấm "Tải models" để lấy danh sách thật.'
   },
+    groq: {
+    id: 'groq',
+    name: 'Groq (miễn phí, nhanh)',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    chatPath: '/chat/completions',
+    modelsPath: '/models',
+    fallbackModels: ['openai/gpt-oss-120b', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile'],
+    failoverModels: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
+    freeModels: ['openai/gpt-oss-120b', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile'],
+    docsUrl: 'https://console.groq.com/docs/models',
+    notes: 'Miễn phí nhưng giới hạn token/phút thấp: hợp với Review/README/file nhỏ, KHÔNG hợp sinh file lớn với max_tokens 16000.'
+  },
   grok: {
     id: 'grok',
     name: 'Grok (xAI)',

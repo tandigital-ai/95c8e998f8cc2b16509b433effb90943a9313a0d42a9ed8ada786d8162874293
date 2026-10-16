@@ -226,7 +226,7 @@ function readBody(req, limit) {
     if (declared > limit) tooBig();
     req.on('data', (c) => {
       size += c.length;
-      if (failed) { if (size > limit * 2) req.destroy(); return; } // xả bớt để còn gửi được 413
+      if (failed) { if (size > Math.max(limit * 2, 8 * 1024 * 1024)) req.destroy(); return; } // xả bớt để còn gửi được 413
       if (size > limit) { tooBig(); return; }
       chunks.push(c);
     });

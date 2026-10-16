@@ -3,6 +3,8 @@
  * - Ước tính chi phí TRƯỚC khi chạy (max_tokens = trường hợp xấu nhất) và hỏi xác nhận nếu vượt ngân sách.
  * - Hủy / Thử lại bước / Thử lại file / Resume thủ công.
  * - Cảnh báo khi rời trang đang chạy; gỡ cảnh báo khi xong (sửa lỗi B15 bản GAS).
+ * - v2: THANH TIẾN TRÌNH % (tổng + từng bước), đồng hồ chạy, ước tính thời gian còn lại,
+ *       tự cập nhật mỗi giây; ô 💡 giải thích lỗi nhà cung cấp AI (402/429/503/504/ngân sách/bị cắt).
  */
 import { createPipeline, STEPS, STEP_LABELS, summarizeJob } from '../core/pipeline.js';
 import { estimateMessagesTokens, formatUsd } from '../core/budget.js';
@@ -171,9 +173,9 @@ export function createPipelineRunner(app) {
         await app.reloadProject();
       }
       if (!(app.state.project.workspace.idea || '').trim()) { app.toast('Hãy nhập ý tưởng trước.', 'err'); ideaEl?.focus(); return; }
-      const job = await pipeline.create(app.state.project.id, { skip });
+      const prevJob = await pipeline.latestForProject(app.state.project.id); const job = await pipeline.create(app.state.project.id, { skip });
       // Giữ kết quả bước đã có nếu đầu vào không đổi: nạp hash cũ từ job trước
-      const prev = await pipeline.latestForProject(app.state.project.id);
+      const prev = prevJob;
       if (prev && prev.id !== job.id) {
         for (const st of STEPS) if (['done', 'skipped'].includes(prev.steps[st].status)) job.steps[st] = { ...prev.steps[st] };
         for (const [f, v] of Object.entries(prev.files || {})) if (v.status === 'done') job.files[f] = { ...v };
@@ -217,6 +219,122 @@ export function createPipelineRunner(app) {
 const STATUS_TEXT = { pending: 'chờ', running: 'đang chạy', done: 'xong', failed: 'LỖI', skipped: 'bỏ qua', truncated: 'BỊ CẮT' };
 const JOB_TEXT = { idle: 'Chưa chạy', running: '⏳ Đang chạy', paused: '⏸ Tạm dừng', interrupted: '⚠ Bị gián đoạn (tab đã đóng)', failed: '❌ Dừng do lỗi', done: '✔ Kết thúc', 'done-with-issues': '⚠ Kết thúc — còn vấn đề' };
 
+/** Trọng số % của từng bước (theo khối lượng việc). Bước bỏ qua không tính; tự chuẩn hóa về 100%. */
+const STEP_WEIGHT = Object.freeze({ architecture: 10, contract: 15, 'build-files': 40, checks: 5, review: 10, fix: 8, seed: 5, readme: 5, 'save-version': 2 });
+const sub = { step: null, done: 0, total: 0 }; // tiến độ con (vd Contract "phần 3/11")
+let clock = { jobId: null, startedAt: 0, startPct: 0 };
+let ticker = null;
+
+function mmss(ms) {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const hh = Math.floor(t / 3600);
+  const mm = Math.floor((t % 3600) / 60);
+  const ss = t % 60;
+  const p2 = (n) => String(n).padStart(2, '0');
+  return hh ? `${hh}:${p2(mm)}:${p2(ss)}` : `${p2(mm)}:${p2(ss)}`;
+}
+
+/** Đọc "phần n/N" từ ghi chú trực tiếp của bước đang chạy (Contract v2.x ghi dạng này). */
+function readSub(app, job) {
+  const cur = job && job.status === 'running' ? job.current?.step : null;
+  if (sub.step && sub.step !== cur) { sub.step = null; sub.done = 0; sub.total = 0; }
+  const m = /phần\s+(\d+)\s*\/\s*(\d+)/i.exec(app.state.liveNote || '');
+  if (cur && m) { sub.step = cur; sub.done = Math.max(0, Number(m[1]) - 1); sub.total = Math.max(1, Number(m[2])); }
+}
+
+/** Tính % tổng và % từng bước (hàm thuần). */
+export function computeProgress(job, subp = { step: null, done: 0, total: 0 }) {
+  const skip = new Set(job?.options?.skip || []);
+  let total = 0;
+  let got = 0;
+  const frac = {};
+  for (const s of STEPS) {
+    const st = job.steps[s];
+    if (!st || st.status === 'skipped' || (skip.has(s) && st.status === 'pending')) { frac[s] = null; continue; }
+    const w = STEP_WEIGHT[s] || 1;
+    total += w;
+    let f = 0;
+    if (st.status === 'done') f = 1;
+    else if (s === 'build-files') {
+      const fs = Object.values(job.files || {});
+      if (fs.length) f = fs.filter((x) => x.status === 'done' || x.status === 'skipped').length / fs.length;
+    } else if (st.status === 'running' && subp.step === s && subp.total > 0) f = Math.min(0.99, subp.done / subp.total);
+    frac[s] = Math.round(f * 100);
+    got += w * f;
+  }
+  return { pct: total ? Math.min(100, Math.round((got / total) * 100)) : 0, frac };
+}
+
+function progressInfo(app, job) {
+  readSub(app, job);
+  const { pct, frac } = computeProgress(job, sub);
+  const now = Date.now();
+  const isRunning = job.status === 'running' && !!app.runner?.running;
+  if (isRunning) { if (clock.jobId !== job.id || !clock.startedAt) clock = { jobId: job.id, startedAt: now, startPct: pct }; }
+  else clock = { jobId: null, startedAt: 0, startPct: 0 };
+
+  const per = {};
+  for (const s of STEPS) {
+    const st = job.steps[s];
+    if (!st || st.status !== 'running') { per[s] = STATUS_TEXT[st?.status] || st?.status || ''; continue; }
+    let d = `đang chạy · ${frac[s] ?? 0}%`;
+    if (s === 'build-files') {
+      const fs = Object.values(job.files || {});
+      d += ` (${fs.filter((f) => f.status === 'done').length}/${fs.length} file)`;
+    } else if (sub.step === s && sub.total) d += ` (phần ${Math.min(sub.done + 1, sub.total)}/${sub.total})`;
+    if (st.startedAt) d += ' · ' + mmss(now - st.startedAt);
+    per[s] = d;
+  }
+
+  const parts = [`Tiến độ: ${pct}%`];
+  const cur = job.current?.step;
+  if (isRunning && cur) parts.push(`bước ${STEPS.indexOf(cur) + 1}/${STEPS.length}: ${STEP_LABELS[cur]}${job.current.file ? ' — ' + job.current.file : ''}`);
+  if (isRunning) {
+    const el = now - clock.startedAt;
+    parts.push('đã chạy ' + mmss(el));
+    const gained = pct - clock.startPct;
+    if (gained >= 3 && el > 20000 && pct < 100) parts.push('còn ~' + mmss((el * (100 - pct)) / gained) + ' (ước tính)');
+  } else parts.push(JOB_TEXT[job.status] || job.status);
+  return { pct, per, main: parts.join(' · '), note: app.state.liveNote || '' };
+}
+
+/** Cập nhật tại chỗ (không vẽ lại cả bảng ⇒ không làm mất cú bấm chuột). */
+function updateProgressDom(app, job) {
+  const P = progressInfo(app, job);
+  const bar = document.getElementById('pl-bar');
+  if (bar) bar.value = P.pct;
+  const t = document.getElementById('pl-pct');
+  if (t) t.textContent = P.main;
+  const n = document.getElementById('pl-note');
+  if (n) { n.textContent = P.note ? 'ℹ ' + P.note : ''; n.style.display = P.note ? '' : 'none'; }
+  for (const s of STEPS) {
+    const e = document.getElementById('pl-step-' + s);
+    if (e) e.textContent = P.per[s];
+  }
+}
+
+function ensureTicker(app) {
+  if (ticker) return;
+  ticker = setInterval(() => {
+    const job = app.state.job;
+    if (!job || !app.runner?.running) { clearInterval(ticker); ticker = null; return; }
+    try { updateProgressDom(app, job); } catch (_e) { /* không chặn pipeline */ }
+  }, 1000);
+}
+
+/** Giải thích lỗi bằng lời dễ hiểu: lỗi NHÀ CUNG CẤP AI hay lỗi CODE. */
+function providerHint(err) {
+  const e = String(err || '');
+  if (/HTTP 402|Insufficient credits|purchase/i.test(e)) return 'Tài khoản nhà cung cấp AI KHÔNG CÓ / HẾT CREDIT (402) — KHÔNG phải lỗi code. Nạp credit, hoặc chọn model của nhà cung cấp khác cho bước này, rồi bấm ↻.';
+  if (/HTTP 429|tạm nghỉ|rate.?limit/i.test(e)) return 'Nhà cung cấp đang GIỚI HẠN số lượt gọi (429) — KHÔNG phải lỗi code. Chờ vài phút hoặc đổi model/nhà cung cấp, rồi bấm ↻.';
+  if (/HTTP 503|high demand|overload/i.test(e)) return 'Model đang QUÁ TẢI phía nhà cung cấp (503) — KHÔNG phải lỗi code. Thử lại sau ít phút hoặc đổi model.';
+  if (/HTTP 504|Hết thời gian chờ|timeout/i.test(e)) return 'Model trả lời QUÁ CHẬM (504) — KHÔNG phải lỗi code. Bật ô "Streaming", tăng UPSTREAM_TIMEOUT_MS trong .env, hoặc chọn model nhanh hơn (không suy luận).';
+  if (/ngân sách/i.test(e)) return 'Bạn đã dừng vì vượt NGÂN SÁCH CẢNH BÁO — không phải lỗi. Vào Cài đặt tăng ngân sách, hoặc bấm "Vẫn chạy" khi được hỏi.';
+  if (/GIỚI HẠN ĐẦU RA|BỊ CẮT|truncat/i.test(e)) return 'Câu trả lời của AI dài hơn giới hạn đầu ra (max_tokens) — KHÔNG phải lỗi code. Chọn model không suy luận hoặc tăng max_tokens.';
+  if (/JSON không hợp lệ|schema/i.test(e)) return 'AI trả nội dung sai cấu trúc. Thử bấm ↻ hoặc chọn model mạnh hơn cho bước này. Nếu lặp lại nhiều lần, hãy gửi ảnh lỗi để kiểm tra code.';
+  return null;
+}
+
 export function renderPipelinePanel(app, container) {
   const runner = app.runner;
   const job = app.state.job;
@@ -242,14 +360,30 @@ export function renderPipelinePanel(app, container) {
     return;
   }
 
+  const P = progressInfo(app, job);
+
   const steps = h('div', { class: 'steps', role: 'list' }, ...STEPS.map((s, i) => {
     const st = job.steps[s];
-    const canRetry = !running && ['failed', 'truncated', 'done', 'skipped'].includes(st.status);
+    const canRetry = !running && ['failed', 'truncated', 'done', 'skipped', 'pending'].includes(st.status);
     return h('div', { class: ['step', st.status], role: 'listitem', title: [st.error, st.note].filter(Boolean).join(' — ') || STATUS_TEXT[st.status] },
       h('span', { class: 'step-num' }, st.status === 'done' ? '✓' : st.status === 'failed' || st.status === 'truncated' ? '!' : String(i + 1)),
-      h('span', { class: 'grow' }, STEP_LABELS[s], h('br'), h('span', { class: 'muted' }, STATUS_TEXT[st.status])),
-      canRetry ? h('button', { class: 'icon-btn', title: 'Chạy lại bước này', 'aria-label': 'Chạy lại ' + STEP_LABELS[s], onclick: () => runner.retryStep(s) }, '↻') : null);
+      h('span', { class: 'grow' }, STEP_LABELS[s], h('br'), h('span', { class: 'muted', id: 'pl-step-' + s }, P.per[s])),
+      canRetry ? h('button', { class: 'icon-btn', title: 'Chạy lại bước này', 'aria-label': 'Chạy lại ' + STEP_LABELS[s], onclick: () => runner.retryStep(s) }, st.status === 'pending' ? '▶' : '↻') : null);
   }));
+
+  // Thanh tiến trình tổng (thẻ <progress> gốc ⇒ không cần CSS, an toàn với CSP)
+  const bar = h('progress', { id: 'pl-bar', max: '100', value: String(P.pct), 'aria-label': 'Tiến độ pipeline (%)' });
+  bar.max = 100;
+  bar.value = P.pct;
+  bar.style.width = '100%';
+  bar.style.height = '16px';
+  const progressBox = h('div', { class: 'mt-8' }, bar, h('div', { class: 'small', id: 'pl-pct' }, P.main));
+
+  const noteBox = h('div', { class: 'info-box small', id: 'pl-note' }, P.note ? 'ℹ ' + P.note : '');
+  noteBox.style.display = P.note ? '' : 'none';
+
+  const bad = !running ? STEPS.map((s) => job.steps[s]).find((st) => (st.status === 'failed' || st.status === 'truncated') && (st.error || st.note)) : null;
+  const hint = bad ? providerHint(bad.error || bad.note) : null;
 
   const files = Object.entries(job.files || {});
   const fileStates = app.state.files || {};
@@ -276,9 +410,13 @@ export function renderPipelinePanel(app, container) {
     h('div', { class: 'small muted' }, `Cập nhật ${fmtTime(job.updatedAt)} · file: ${s.filesDone}/${s.filesTotal} đã sinh${s.filesTruncated ? `, ${s.filesTruncated} BỊ CẮT` : ''}${s.filesFailed ? `, ${s.filesFailed} lỗi` : ''}`,
       cost ? ` · chi phí dự án: ${formatUsd(cost.knownCostUsd)}${cost.unknownPriceCalls ? ` + ${cost.unknownPriceCalls} lượt không rõ giá` : ''}` : ''),
     job.status === 'interrupted' ? h('div', { class: 'warn-box small' }, '⚠ Tab đã bị đóng/tải lại khi pipeline đang chạy. Bước dở dang sẽ chạy lại khi bấm "Tiếp tục" (có thể tốn token lần nữa).') : null,
+    progressBox,
     steps,
-    app.state.liveNote ? h('div', { class: 'info-box small' }, 'ℹ ' + app.state.liveNote) : null,
+    noteBox,
+    hint ? h('div', { class: 'warn-box small' }, '💡 ' + hint) : null,
     files.length ? h('div', { class: 'file-list', role: 'list', 'aria-label': 'Trạng thái từng file' }, ...fileRows) : null,
     h('details', { class: 'mt-8', open: running }, h('summary', { class: 'small' }, `Log trực tiếp (${events.length})`), logBox),
     opts, buttons));
+
+  if (running) ensureTicker(app);
 }

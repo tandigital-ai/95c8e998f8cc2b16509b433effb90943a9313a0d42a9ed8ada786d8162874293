@@ -111,13 +111,13 @@ export function createPipeline({ db, executors, logger = null, now = () => Date.
 
   async function runFiles(job, ctx) {
     const ex = executors['build-files'];
-    const list = await ex.files(ctx);
+    const list = await ex.files(ctx); let providerFails = 0;
     for (const p of list) if (!job.files[p]) job.files[p] = { status: 'pending', inputHash: null, error: null, note: null, attempts: 0 };
     for (const p of Object.keys(job.files)) if (!list.includes(p)) delete job.files[p];
     await save(job);
     for (const path of list) {
       if (ctx.signal.aborted) throw ctx.signal.reason || new PipelineError('ABORTED', 'Đã hủy');
-      const fstate = job.files[path];
+      if (providerFails >= 2) return { status: 'failed', halt: true, error: 'Nhà cung cấp AI lỗi/quá tải 2 file liên tiếp (lỗi phía nhà cung cấp, KHÔNG phải lỗi code) — đã DỪNG để không đốt quota. Đổi model/provider rồi bấm "Tiếp tục".' }; const fstate = job.files[path];
       const h = ex.fileInput ? await hashObject(await ex.fileInput(ctx, path)) : null;
       if (fstate.status === 'done' && h && fstate.inputHash === h) continue;
       if (ctx.onlyFile && ctx.onlyFile !== path) continue;
@@ -136,7 +136,7 @@ export function createPipeline({ db, executors, logger = null, now = () => Date.
       fstate.status = r.status || 'done';
       fstate.note = r.note || null;
       fstate.error = r.error || null;
-      fstate.inputHash = fstate.status === 'done' ? h : null;
+      fstate.inputHash = fstate.status === 'done' ? h : null; providerFails = (fstate.status === 'failed' && /HTTP (402|429|503|504)|high demand|overloaded|quota|credit/i.test(fstate.error || '')) ? providerFails + 1 : 0;
       if (fstate.status === 'failed') event(job, 'error', `File ${path}: ${fstate.error}`, { step: 'build-files', file: path });
       else if (fstate.status === 'truncated') event(job, 'warn', `File ${path} BỊ CẮT (TRUNCATED) — không coi là thành công.`, { step: 'build-files', file: path });
       else event(job, 'info', `File ${path}: ${fstate.status}${fstate.note ? ' — ' + fstate.note : ''}`, { step: 'build-files', file: path });
