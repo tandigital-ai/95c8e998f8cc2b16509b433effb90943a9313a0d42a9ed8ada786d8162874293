@@ -1,0 +1,12 @@
+{
+  "name": "ai-architect-proxy",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Proxy LLM nhỏ gọn cho AI System Architect (dùng cá nhân). Không dependency ngoài. Có model failover tự động khi provider trả 402/429/503.",
+  "engines": { "node": ">=20.12" },
+  "scripts": {
+    "start": "node index.js",
+    "health": "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\""
+  }
+}
